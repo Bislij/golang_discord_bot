@@ -19,7 +19,6 @@ var Echo = Command{
 		},
 	},
 	Execute: func(ctx commandContext.CommandContext) error {
-		err := ctx.Reply(ctx.Options()[0].StringValue())
-		return err
+		return ctx.Reply(ctx.Options()[0].StringValue())
 	},
 }

@@ -13,21 +13,18 @@ import (
 )
 
 var (
-	mgr   *shards.Manager
-	token string
+	mgr      *shards.Manager
+	token    string
+	Commands = make(map[string]command.Command)
 )
-
-var Commands = make(map[string]command.Command)
 
 func registerCommands(s *discordgo.Session, cmds []command.Command) {
 	for _, cmd := range cmds {
 		Commands[cmd.ApplicationCommand.Name] = cmd
-		_, err := s.ApplicationCommandCreate(s.State.User.ID, "", &cmd.ApplicationCommand)
-		if err != nil {
+		if _, err := s.ApplicationCommandCreate(s.State.User.ID, "", &cmd.ApplicationCommand); err != nil {
 			log.Printf("Cannot create command: %v\n", err)
 		}
 	}
-	return
 }
 
 func init() {
@@ -40,9 +37,7 @@ func init() {
 
 func main() {
 	var err error
-
-	mgr, err = shards.New("Bot " + token)
-	if err != nil {
+	if mgr, err = shards.New("Bot " + token); err != nil {
 		log.Fatalf("Error creating shard manager: %v\n", err)
 	}
 
@@ -61,11 +56,11 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-stop
 
-	err = mgr.Shutdown()
-	if err != nil {
-		return
+	if err = mgr.Shutdown(); err != nil {
+		log.Printf("Error during shutdown: %v\n", err)
+	} else {
+		log.Println("Bot shut down cleanly.")
 	}
-	log.Println("Bot shut down cleanly.")
 }
 
 func onReady(s *discordgo.Session, _ *discordgo.Ready) {

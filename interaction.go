@@ -10,18 +10,14 @@ import (
 	"strings"
 )
 
-const Prefix string = "g;"
+const Prefix = "g;"
 
 func onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type == discordgo.InteractionApplicationCommand {
-		err := handleInteractionCommand(s, i)
-		if err != nil {
+		if err := handleInteractionCommand(s, i); err != nil {
 			panic(err)
-			return
 		}
 	}
-
-	return
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -30,23 +26,22 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	if m.Message.Content[0:len(Prefix)] == Prefix {
-		err := handleMessageCommand(s, m)
-		if err != nil {
+		if err := handleMessageCommand(s, m); err != nil {
 			panic(err)
-			return
 		}
 	}
 }
 
-func handleInteractionCommand(s *discordgo.Session, i *discordgo.InteractionCreate) (err error) {
-	err = Commands[i.ApplicationCommandData().Name].Execute(&commandContext.InteractionContext{Session: s, InteractionCreate: i})
-	return
+func handleInteractionCommand(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	return Commands[i.ApplicationCommandData().Name].Execute(&commandContext.InteractionContext{
+		Session:           s,
+		InteractionCreate: i,
+	})
 }
 
-func handleMessageCommand(s *discordgo.Session, m *discordgo.MessageCreate) (err error) {
+func handleMessageCommand(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	rgx := regexp.MustCompile(`"[^"]+"|\S+`)
 	args := rgx.FindAllString(m.Message.Content, -1)
-
 	for i, match := range args {
 		args[i] = strings.Trim(match, `"`)
 	}
@@ -54,73 +49,80 @@ func handleMessageCommand(s *discordgo.Session, m *discordgo.MessageCreate) (err
 	cmd := strings.TrimPrefix(args[0], Prefix)
 	value, ok := Commands[cmd]
 
-	if ok {
-		if len(args) == 0 || len(args) != len(value.ApplicationCommand.Options)+1 {
-			fmt.Printf("Non-fatal: incorrect amount of options in command %s\n", cmd)
-			return
-		}
-		args = args[1 : len(value.ApplicationCommand.Options)+1]
-		var options []*discordgo.ApplicationCommandInteractionDataOption
-		for index, el := range value.ApplicationCommand.Options {
-			switch el.Type {
-			case discordgo.ApplicationCommandOptionSubCommand:
-				panic("unimplemented")
-			case discordgo.ApplicationCommandOptionSubCommandGroup:
-				panic("unimplemented")
-			case discordgo.ApplicationCommandOptionString:
-				options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
-					Name:    value.ApplicationCommand.Options[index].Name,
-					Type:    el.Type,
-					Value:   args[index],
-					Options: options,
-					Focused: false,
-				})
-			case discordgo.ApplicationCommandOptionInteger:
-				parseInt, e := strconv.ParseInt(args[index], 10, 64)
-				if e != nil {
-					fmt.Printf("Non-fatal: could not parse value at index %d into integer: %e\n", index, e)
-					return
-				} else {
-					options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
-						Name:    value.ApplicationCommand.Options[index].Name,
-						Type:    el.Type,
-						Value:   parseInt,
-						Options: options,
-						Focused: false,
-					})
-				}
-			case discordgo.ApplicationCommandOptionBoolean:
-				parseBool, e := strconv.ParseBool(args[index])
-				if e != nil {
-					fmt.Printf("Non-fatal: could not parse value at index %d into boolean: %e\n", index, e)
-					return
-				} else {
-					options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
-						Name:    value.ApplicationCommand.Options[index].Name,
-						Type:    el.Type,
-						Value:   parseBool,
-						Options: options,
-						Focused: false,
-					})
-				}
-			case discordgo.ApplicationCommandOptionUser:
-				panic("unimplemented")
-			case discordgo.ApplicationCommandOptionChannel:
-				panic("unimplemented")
-			case discordgo.ApplicationCommandOptionRole:
-				panic("unimplemented")
-			case discordgo.ApplicationCommandOptionMentionable:
-				panic("unimplemented")
-			case discordgo.ApplicationCommandOptionNumber:
-				panic("unimplemented")
-			case discordgo.ApplicationCommandOptionAttachment:
-				panic("unimplemented")
-			}
-		}
-		err = value.Execute(&commandContext.MessageContext{Session: s, MessageCreate: m, OptionsList: options})
-	} else {
+	if !ok {
 		log.Printf("Unrecognized command: %s", cmd)
+		return nil
 	}
 
-	return
+	args = args[1:]
+
+	if len(args) != len(value.ApplicationCommand.Options) {
+		fmt.Printf("Non-fatal: incorrect number of options for command '%s'\n", cmd)
+		return nil
+	}
+
+	var options []*discordgo.ApplicationCommandInteractionDataOption
+	for i, opt := range value.ApplicationCommand.Options {
+		switch opt.Type {
+		case discordgo.ApplicationCommandOptionString:
+			options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
+				Name:  opt.Name,
+				Type:  opt.Type,
+				Value: args[i],
+			})
+		case discordgo.ApplicationCommandOptionInteger:
+			val, err := strconv.ParseInt(args[i], 10, 64)
+			if err != nil {
+				fmt.Printf("Non-fatal: could not parse value at index %d into integer: %e\n", i, err)
+				return nil
+			}
+			options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
+				Name:  opt.Name,
+				Type:  opt.Type,
+				Value: val,
+			})
+		case discordgo.ApplicationCommandOptionBoolean:
+			val, err := strconv.ParseBool(args[i])
+			if err != nil {
+				fmt.Printf("Non-fatal: could not parse value at index %d into boolean: %e\n", i, err)
+				return nil
+			}
+			options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
+				Name:  opt.Name,
+				Type:  opt.Type,
+				Value: val,
+			})
+		case discordgo.ApplicationCommandOptionRole:
+			guild, err := s.Guild(m.GuildID)
+			if err != nil {
+				fmt.Printf("Non-fatal: could not retrieve guild: %v\n", err)
+				return nil
+			}
+			var val *discordgo.Role
+			for _, role := range guild.Roles {
+				if role.Name == args[i] {
+					val = role
+					break
+				}
+			}
+			if val == nil {
+				fmt.Printf("Non-fatal: could not find role named '%s'\n", args[i])
+				return nil
+			}
+			options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
+				Name:  opt.Name,
+				Type:  opt.Type,
+				Value: val,
+			})
+		default:
+			fmt.Printf("Non-fatal: unimplemented option type: %d\n", opt.Type)
+			return nil
+		}
+	}
+
+	return value.Execute(&commandContext.MessageContext{
+		Session:       s,
+		MessageCreate: m,
+		OptionsList:   options,
+	})
 }

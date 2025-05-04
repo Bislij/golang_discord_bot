@@ -12,7 +12,7 @@ var Ping = Command{
 		Description: "Replies with Pong!",
 	},
 	Execute: func(ctx commandContext.CommandContext) error {
-		err := ctx.ReplyEmbed(&discordgo.MessageEmbed{
+		return ctx.ReplyEmbed(&discordgo.MessageEmbed{
 			Title:       "Latency Time",
 			Description: strconv.FormatInt(ctx.Latency().Milliseconds(), 10) + "ms",
 			Color:       0,
@@ -20,6 +20,5 @@ var Ping = Command{
 				Text: "pong you bumbling pillock",
 			},
 		})
-		return err
 	},
 }
